@@ -74,6 +74,7 @@ in.base  <- "~/Desktop/init_test_data/lat42.75lon-77.25/"
 path.ED2IN <- file.path(in.base, "ED2IN")
 path.histo <- file.path(in.base, "histo")
 path.analy <- file.path(in.base, "analy")
+site.ID    <- "HARVARD"
 
 path.out <- file.path(in.base, "SAS_out")
 if(!dir.exists(path.out)) dir.create(path.out)
@@ -540,11 +541,14 @@ pss.big[,14] <- rep(fsn_ss[p.use],nrow(pss.big)) # fsn
 
 #---------------------------------------
 # 8. Write everything to file!!
+# NOTE: ED is silly and requires the site lat/lon to be part of the init file name
 #---------------------------------------
-write.table(css.big,file=paste(out,sites[s],".css",sep=""),row.names=FALSE,append=FALSE,
+sas.name <- paste0(site.ID, "_lat", site.lat, "lon", site.lon) 
+
+write.table(css.big,file=paste(out,sas.name,".css",sep=""),row.names=FALSE,append=FALSE,
             col.names=TRUE,quote=FALSE)
 
-write.table(pss.big,file=paste(out,sites[s],".pss",sep=""),row.names=FALSE,append=FALSE,
+write.table(pss.big,file=paste(out,sas.name,".pss",sep=""),row.names=FALSE,append=FALSE,
             col.names=TRUE,quote=FALSE)
 #---------------------------------------
 # -------------------------------------
