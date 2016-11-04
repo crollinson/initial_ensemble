@@ -45,7 +45,7 @@
 # FSN = Fast soil N
 #
 # Note: there are a number of constants and parameters that should be 
-#       pulled from the code and/or XML
+#       pulled from the code and/or XML and/or PEcAn xml file
 # ------------------------------------------------------------------------------------
 
 
@@ -100,7 +100,7 @@ ann.files  <- dir(path.analy, "-Y-") #yearly files only
 # 2.a. SAS conditions & paramters
 # ----------
 # Basic Settings
-n.ens   <- 50 # Number of initial conditions to create
+n.ens   <- 100 # Number of initial conditions to create
 blckyr  <- 50 #number of years to chunk data by
 dpm     <- c(31,28,31,30,31,30,31,31,30,31,30,31) # days per month cheat list
 sufx    <- "g01.h5"
