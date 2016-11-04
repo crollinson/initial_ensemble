@@ -1,0 +1,50 @@
+# SAS Workflow:
+# 1. Specify file paths, etc
+#    1.a. Directory file structure
+#    1.b. List of files
+# 2. Specify constants & parameters
+#    2.a. SAS-specific
+#    2.b. settings & parameters from ED2IN
+#    2.c. parameters from XML
+#    2.d. parameters from ED2 code
+# 3. Extract site-level values, set up blank data objects
+#    3.a. derived values & indices
+#    3.b. Set up patch matrix
+#    3.c. Soil layers
+# 4. Find mean soil temp & moisture 
+#   *** PLACE TO GET VALUES TO GENERATE ENSEMBLE ****
+#    -- uses analy files
+# 5. Cohort Extraction Loop
+#    - Cohort Columns:
+#       1. year   = first year for next set of runs (yeara)
+#       2. patch  = number age slice we're working with
+#       3. cohort = cohort number extracted from file
+#       4. dbh    = dbh values extracted from file ("DBH")
+#       5. ht     = height values extracted from file ("HITE")
+#       6. pft    = pft identity extracted from file ("PFT")
+#       7. n      = density extracted from file ("NPLANT")
+#       8. bdead  = dead biomass (heartwood) extracted from file ("BDEAD")
+#       9. balive = living biomass (sapwood, leaves, etc) extracted from file ("BALIVE"
+#      10. Avgrg  = BLANK! (no clue what this actually is)
+#    - Also fills some basic values into patch file
+#       1. site  = 1
+#       2. year  = restart year 
+#       3. patch = number of age slice
+#       4. dst   = 1 (no clue what this is)
+#       5. age   = time since spin start 
+#       -- plus dummy values
+# 6. Patch Extraction Loop (from monthly histo files)
+#    - fsc_in = fast (labile?) soil C inputs ("FSC_IN")
+#    - ssc_in = structural (recalcitrant?) soil C inputs ("SSC_IN")
+#    - ssl_in = structural (recalcitrant?) soil L inputs ("SSL_IN")
+#    - fsn_in = fast (labile?) soil Nitrogen inputs ("FSN_IN")
+#    - pln_up = plant nitrogen uptake inputs ("TOTAL_PLANT_NITROGEN_UPTAKE")
+# 7. Calculate steady-state soil pools!
+#    7.a. calculate A_decomp (depends on decomp_scheme)
+#         7.a.1 Temperature Limitation
+#         7.a.2 Moisture Limitation
+#    7.b. Steady-State Pool calculation
+#         7.b.1. Carbon & fast Nitrogen pools
+#         7.b.2. Mineralized nitrogen calculation
+#    7.c. Place values in pss file
+# 8. Write file!
