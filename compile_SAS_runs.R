@@ -96,7 +96,6 @@ ann.files  <- dir(path.analy, "-Y-") #yearly files only
 # 2.a. SAS conditions & paramters
 # ----------
 # Basic Settings
-n.ens   <- 50 # Number of initial conditions to create
 blckyr  <- 50 #number of years to chunk data by
 dpm     <- c(31,28,31,30,31,30,31,31,30,31,30,31) # days per month cheat list
 sufx    <- "g01.h5"
