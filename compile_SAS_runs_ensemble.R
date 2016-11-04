@@ -59,6 +59,11 @@
 library(chron)
 library(ncdf4)
 library(colorspace)
+library(stringr)
+library(XML)
+library(abind)
+
+set.seed(31201)
 #---------------------------------------
 
 #---------------------------------------
@@ -85,7 +90,6 @@ if(!dir.exists(path.out)) dir.create(path.out)
 # ----------
 ann.files  <- dir(path.analy, "-Y-") #yearly files only  
 # ----------
-
 #---------------------------------------
 
 #---------------------------------------
@@ -105,8 +109,13 @@ month.end   <- 12
 restart.year <- 1850 # Year the runs using the .css & .pss files will start in 
 
 # Settings that can be perturbed to help generate an ensemble of veg & carbon initial conditions
-# *** PLACE TO GET VALUES TO GENERATE ENSEMBLE ****
-disturb <- 0.005 # the treefall disturbance rate you will prescribe in the actual runs (or close to it)
+disturb.return <- 200 # mean disturbance return interval
+disturb <- rexp(n.ens, rate=200) # 
+
+
+# There's probably a better distribution to use to ensure non-negative values, but I'm lazy and dumb
+# disturb.sd     <- 0.25  # fraction used to give a distribution around the mean disturbance return interval (sd = 25% of the mean)
+# disturb <- abs(rnorm(n.ens, mean=1/disturb.return, sd=1/disturb.return*disturb.sd)) 
 
 # These are calculated from the output, but could be tweaked to get the distribution of soil carb
 # # soil_tempk <- 0:35+273
@@ -130,6 +139,7 @@ xml.path      <- file.path(in.base, "PalEON_Phase2.v1.xml") # NL%IEDCNFGF
 # 2.c. Paramters to extract from XML
 # Note: The names are as they're specified in the xml
 # ----------
+# register <- XML::xmlToList(XML::xmlParse(register.xml))
 rh_decay_low   <- 0.14 
 rh_decay_high  <- 0.60
 rh_low_temp    <- 291.15
@@ -155,7 +165,7 @@ if(decomp_scheme!=2){
   # These are used if you're not working with decomp_scheme = 2 (i.e. LLoyd-Taylor)
   resp_opt_water            <- 0.8938
   resp_water_below_opt      <- 5.0786
-  resp_water_above_opt	  <- 4.5139
+  resp_water_above_opt	    <- 4.5139
   #resp_temperature_increase <- 0.0757 # Jackie had greatly modified this value
   resp_temperature_increase <- 0.23503 # Jackie
 }
@@ -190,9 +200,9 @@ nsteps <- length(yrs) # The number of blocks = the number steps we'll have
 # 3.b. Set up patch matrix
 # ----------
 #create an emtpy storage for the patch info
-pss.big <- matrix(nrow=length(yrs),ncol=14) # save every X yrs according to chunks specified above
-colnames(pss.big) <- c("site","year","patch","dst","age","area","water","fsc","stsc","stsl",
-                       "ssc","psc","msn","fsn")
+# Note: ED2 wiki calls column 4 "trk" instead of dst; either way, this refers to primary (2) / secondary (1)/ non-forest (0)
+pss.big <- array(dim=c(length(yrs),14,n.ens)) # save every X yrs according to chunks specified above
+dimnames(pss.big)[[2]] <- c("site","year","patch","dst","age","area","water","fsc","stsc","stsl","ssc","psc","msn","fsn")
 
 # Age-area matrix for size distribution
 # Calculate area distribution based on geometric decay based loosely on your disturbance rates
@@ -201,13 +211,17 @@ colnames(pss.big) <- c("site","year","patch","dst","age","area","water","fsc","s
 #       If you're not planning on doing this run, you may want to go through and evenly distribute
 #       everything to the geometric distribution (what Jackie's original SAS looked like)
 stand.age <- seq(yrs[1]-yeara,nrow(pss.big)*blckyr,by=blckyr)
-area.dist <- vector(length=nrow(pss.big))
-area.dist[1] <- sum(dgeom(0:(stand.age[2]-1), disturb))
-for(i in 2:(length(area.dist)-1)){
-  area.dist[i] <- sum(dgeom((stand.age[i]):(stand.age[i+1]-1),disturb))
+area.dist <- array(dim=c(nrow(pss.big), n.ens))
+
+for(e in 1:n.ens){
+  area.dist[1,e] <- sum(dgeom(0:(stand.age[2]-1), disturb[e]))  
+  for(i in 2:(nrow(area.dist)-1)){
+    area.dist[i,e] <- sum(dgeom((stand.age[i]):(stand.age[i+1]-1),disturb[e]))
+  }
 }
-area.dist[length(area.dist)] <- 1 - sum(area.dist[1:(length(area.dist)-1)])
-pss.big[,"area"] <- area.dist
+
+area.dist[nrow(area.dist),] <- 1 - apply(area.dist[1:(nrow(area.dist)-1),],2, sum)
+pss.big[,"area",] <- area.dist
 # ----------
 
 
@@ -218,7 +232,7 @@ pss.big[,"area"] <- area.dist
 # Note: In ED there's a pain in the butt way of doing this with the energy, but we're going to approximate
 # slz  <- c(-5.50, -4.50, -2.17, -1.50, -1.10, -0.80, -0.60, -0.45, -0.30, -0.20, -0.12, -0.06)
 # dslz <- c(1.00,   2.33,  0.67,  0.40,  0.30,  0.20,  0.15,  0.15,  0.10,  0.08,  0.06,  0.06)
-nc.temp <- nc_open(file.path(dat.dir, ann.files[1]))
+nc.temp <- nc_open(file.path(path.analy, ann.files[1]))
 slz <- ncvar_get(nc.temp, "SLZ")
 dslz <- vector(length=length(slz))
 dslz[length(dslz)] <- 0-slz[length(dslz)]
@@ -229,6 +243,8 @@ for(i in 1:(length(dslz)-1)){
 
 # nsoil=which(slz>= kh_active_depth)
 nsoil=length(slz)
+
+nc_close(nc.temp)
 # ----------
 
 #---------------------------------------
@@ -241,6 +257,7 @@ nsoil=length(slz)
 # *** PLACE TO GET VALUES TO GENERATE ENSEMBLE ****
 # NOTE:  I've been plyaing around with finding the best temp & soil moisture to initialize things
 #        with; if using the means from the spin met cycle work best, insert them here
+# NOTE: This is unfortunately NOT in the annual output, so this will be a little slow
 #---------------------------------------
 tempk.air <- tempk.soil <- moist.soil <- moist.soil.mx <- vector()
 for(y in yrs){
@@ -253,11 +270,10 @@ for(y in yrs){
     day.now   <- sprintf("%2.2i",0)
     hour.now  <- sprintf("%6.6i",0)
     
-    file.now    <- paste(sites[s],"-E-",year.now,"-",month.now,"-",day.now,"-"
-                         ,hour.now,"-",sufx,sep="")
+    file.now    <- dir(path.analy, paste0("-E-",year.now,"-",month.now,"-",day.now,"-",hour.now,"-",sufx))
     
     # cat(" - Reading file :",file.now,"...","\n")
-    now <- nc_open(paste(dat.dir,file.now,sep=""))
+    now <- nc_open(file.path(path.analy,file.now))
     
     air.temp.tmp  [m] <- ncvar_get(now, "MMEAN_ATM_TEMP_PY")
     soil.temp.tmp [m] <- sum(ncvar_get(now, "MMEAN_SOIL_TEMP_PY")[nsoil]*dslz[nsoil]/sum(dslz[nsoil]))
@@ -267,17 +283,22 @@ for(y in yrs){
     nc_close(now)
   }
   # Finding yearly means
-  tempk.air    [ind] <- mean(air.temp.tmp)
+  # tempk.air    [ind] <- mean(air.temp.tmp)
   tempk.soil   [ind] <- max(soil.temp.tmp) # means are typically making temps too low
   moist.soil   [ind] <- mean(soil.moist.tmp)
   moist.soil.mx[ind] <- max(soil.mmax.tmp)
 }
 # adjusting the soil moist to be relative based on the max observed
-moist.soil <- moist.soil/max(moist.soil.mx)
 
-soil_tempk     <- mean(tempk.soil)
-# rel_soil_moist <- mean(moist.soil)+.2
-rel_soil_moist <- 0.5
+# # Original: 
+# moist.soil <- moist.soil/max(moist.soil.mx)
+# # rel_soil_moist <- mean(moist.soil)+.2
+# rel_soil_moist <- 0.5
+
+# New -- distribution of potential values
+rel.moist <- moist.soil/moist.soil.mx
+rel_soil_moist <- rnorm(n.ens, mean(rel.moist), sd(rel.moist))
+soil_tempk <- rnorm(n.ens, mean(tempk.soil), sd(tempk.soil))
 #---------------------------------------
 
 #---------------------------------------  
@@ -288,8 +309,8 @@ rel_soil_moist <- 0.5
 #  -- Dummy extractions of patch-level variables; all of the important variables here are place holders
 #---------------------------------------  
 for (y in yrs){
-  cat(" - Reading file :",ann.files[y-yeara+1],"...","\n")
-  now <- nc_open(paste(dat.dir,ann.files[y-yeara+1],sep=""))
+  # cat(" - Reading file :",ann.files[y-yeara+1],"...","\n")
+  now <- nc_open(file.path(path.analy,ann.files[y-yeara+1]))
   ind <- which(yrs == y)
   
   #Grab variable to see how many cohorts there are
@@ -299,24 +320,25 @@ for (y in yrs){
   # organize into .css variables (Cohorts)
   # Note: all cohorts from a time slice are assigned to a single patch representing a stand of age X
   #---------------------------------------
-  css.tmp <- matrix(nrow=length(ipft),ncol=10)
-  css.tmp[,1] <- rep(restart.year,length(ipft))
-  css.tmp[,2] <- rep(floor((y-yeara)/blckyr)+1,length(ipft))
-  css.tmp[,3] <- 1:length(ipft)
-  css.tmp[,4] <- ncvar_get(now,'DBH')
-  css.tmp[,5] <- ncvar_get(now,'HITE')
-  css.tmp[,6] <- ipft
-  css.tmp[,7] <- ncvar_get(now,'NPLANT')
-  css.tmp[,8] <- ncvar_get(now,'BDEAD')
-  css.tmp[,9] <- ncvar_get(now,'BALIVE')
-  css.tmp[,10] <- rep(-999,length(ipft))
-  colnames(css.tmp) <- c("year","patch","cohort","dbh","ht","pft","n","bdead","balive","Avgrg")
+  css.tmp <- array(dim=c(length(ipft),10,n.ens))
+  dimnames(css.tmp)[[2]] <- c("year","patch","cohort","dbh","ht","pft","n","bdead","balive","Avgrg")
+  css.tmp[,"year"  ,] <- rep(restart.year,length(ipft))
+  css.tmp[,"patch" ,] <- rep(floor((y-yeara)/blckyr)+1,length(ipft))
+  css.tmp[,"cohort",] <- 1:length(ipft)
+  css.tmp[,"dbh"   ,] <- ncvar_get(now,'DBH')
+  css.tmp[,"ht"    ,] <- ncvar_get(now,'HITE')
+  css.tmp[,"pft"   ,] <- ipft
+  css.tmp[,"n"     ,] <- ncvar_get(now,'NPLANT')
+  css.tmp[,"bdead" ,] <- ncvar_get(now,'BDEAD')
+  css.tmp[,"balive",] <- ncvar_get(now,'BALIVE')
+  css.tmp[,"Avgrg" ,] <- rep(-999,length(ipft))
+  
   
   #save big .css matrix
   if(y==yrs[1]){
     css.big <- css.tmp
   } else{
-    css.big <- rbind(css.big,css.tmp)
+    css.big <- abind(css.big,css.tmp, along=1)
   }
   #---------------------------------------
   
@@ -325,21 +347,21 @@ for (y in yrs){
   # save .pss variables (Patches)
   # NOTE: patch AREA needs to be adjusted to be equal to the probability of a stand of age x on the landscape
   #---------------------------------------
-  pss.big[ind,1]  <- 1
-  pss.big[ind,2]  <- restart.year
-  pss.big[ind,3]  <- floor((y-yeara)/blckyr)+1
-  pss.big[ind,4]  <- 1
-  pss.big[ind,5]  <- y-yeara
+  # c("site","year","patch","dst","age","area","water","fsc","stsc","stsl","ssc","psc","msn","fsn")
+  pss.big[ind,"site" ,] <- 1
+  pss.big[ind,"year" ,] <- restart.year
+  pss.big[ind,"patch",] <- floor((y-yeara)/blckyr)+1
+  pss.big[ind,"dst"  ,] <- 1
+  pss.big[ind,"age"  ,] <- y-yeara
   # Note: the following are just place holders that will be overwritten post-SAS
-  # pss.big[ind,6]  <- ncvar_get(now,"AREA") # This is done earlier
-  pss.big[ind,7]  <- 0.5 
-  pss.big[ind,8]  <- ncvar_get(now,"FAST_SOIL_C")
-  pss.big[ind,9]  <- ncvar_get(now,"STRUCTURAL_SOIL_C")
-  pss.big[ind,10] <- ncvar_get(now,"STRUCTURAL_SOIL_L")
-  pss.big[ind,11] <- ncvar_get(now,"SLOW_SOIL_C")
-  pss.big[ind,12] <- 0
-  pss.big[ind,13] <- ncvar_get(now,"MINERALIZED_SOIL_N")
-  pss.big[ind,14] <- ncvar_get(now,"FAST_SOIL_N")
+  pss.big[ind,"water",] <- 0.5 
+  pss.big[ind,"fsc"  ,] <- ncvar_get(now,"FAST_SOIL_C")
+  pss.big[ind,"stsc" ,] <- ncvar_get(now,"STRUCTURAL_SOIL_C")
+  pss.big[ind,"stsl" ,] <- ncvar_get(now,"STRUCTURAL_SOIL_L")
+  pss.big[ind,"ssc"  ,] <- ncvar_get(now,"SLOW_SOIL_C")
+  pss.big[ind,"psc"  ,] <- 0 # Passive soil carbon (not actually read)
+  pss.big[ind,"msn"  ,] <- ncvar_get(now,"MINERALIZED_SOIL_N")
+  pss.big[ind,"fsn"  ,] <- ncvar_get(now,"FAST_SOIL_N")
   
   nc_close(now)
 }
@@ -355,15 +377,12 @@ for (y in yrs){
 #       -- Monthly data is then aggregated to a yearly value: sum for carbon inputs; mean for temp/moist 
 #          (if not calculated above)
 #---------------------------------------
-pss.big <- pss.big[complete.cases(pss.big),]
-
 # some empty vectors for storage etc
 fsc_in_y <- ssc_in_y <- ssl_in_y <- fsn_in_y <- pln_up_y <- vector()
 fsc_in_m <- ssc_in_m <- ssl_in_m <- fsn_in_m <- pln_up_m <-  vector()
 
 # switch to the histo directory
-dat.dir    <- paste(in.base,sites[s],"/histo/",sep="")
-mon.files  <- dir(dat.dir, "-S-") # monthly files only  
+mon.files  <- dir(path.histo, "-S-") # monthly files only  
 
 for (y in yrs){      
   for(m in month.begin:month.end){
@@ -373,12 +392,10 @@ for (y in yrs){
     day.now   <- sprintf("%2.2i",1)
     hour.now  <- sprintf("%6.6i",0)
     
-    dat.dir     <- paste(in.base,sites[s],"/histo/",sep="")
-    file.now    <- paste(sites[s],"-S-",year.now,"-",month.now,"-",day.now,"-"
-                         ,hour.now,"-",sufx,sep="")
+    file.now    <- dir(path.histo, paste0("-S-", year.now, "-", month.now, "-", day.now, "-", hour.now, "-", sufx))
     
-    cat(" - Reading file :",file.now,"...","\n")
-    now <- nc_open(paste(dat.dir,file.now,sep=""))
+    # cat(" - Reading file :",file.now,"...","\n")
+    now <- nc_open(file.path(path.histo,file.now))
     
     # Note: we have to convert the daily value for 1 month by days per month to get a monthly estimate
     fsc_in_m[m-month.begin+1] <- ncvar_get(now,"FSC_IN")*dpm[m] #kg/(m2*day) --> kg/(m2*month)
@@ -504,13 +521,14 @@ fsn_ss <- fsn_in_y[length(fsn_in_y)]/(fsc_loss * A_decomp)
 
 # -------------------
 # 7.b.2 Do the mineralized nitrogen calculation
+# Note: Here we're using the plant uptake at the last time slice
 # -------------------
 #ED2: csite%mineralized_N_loss  = csite%total_plant_nitrogen_uptake(ipa)             
-# + csite%today_Af_decomp(ipa) * Lc * K1 * csite%structural_soil_C(ipa)                     
-# * ( (1.0 - r_stsc) / c2n_slow - 1.0 / c2n_structural)
+#                                 + csite%today_Af_decomp(ipa) * Lc * K1 * csite%structural_soil_C(ipa)                     
+#                                 * ( (1.0 - r_stsc) / c2n_slow - 1.0 / c2n_structural)
 msn_loss <- pln_up_y[length(pln_up_y)] + 
-  A_decomp*Lc*ssl_loss*ssl_in_y[length(ssl_in_y)]*
-  ((1.0-r_stsc)/c2n_slow - 1.0/c2n_structural)
+            A_decomp*Lc*ssl_loss*ssl_in_y[length(ssl_in_y)]*
+            ((1.0-r_stsc)/c2n_slow - 1.0/c2n_structural)
 
 #fast_N_loss + slow_C_loss/c2n_slow
 msn_med  <- fsc_loss*A_decomp*fsn_in_y[length(fsn_in_y)]+ (ssc_loss * A_decomp)/c2n_slow 
@@ -528,14 +546,18 @@ msn_ss   <- msn_med/msn_loss
 p.use <- 1
 
 # write the values to file
-pss.big[,3]  <- 1:nrow(pss.big)
-pss.big[,6]  <- area.dist
-pss.big[,8]  <- rep(fsc_ss[p.use],nrow(pss.big)) # fsc
-pss.big[,9]  <- rep(ssl_ss[p.use],nrow(pss.big)) # stsc
-pss.big[,10] <- rep(ssl_ss[p.use],nrow(pss.big)) # stsl (not used)
-pss.big[,11] <- rep(ssc_ss[p.use],nrow(pss.big)) # ssc
-pss.big[,13] <- rep(msn_ss[p.use],nrow(pss.big)) # msn
-pss.big[,14] <- rep(fsn_ss[p.use],nrow(pss.big)) # fsn
+# c("site","year","patch","dst","age","area","water","fsc","stsc","stsl","ssc","psc","msn","fsn")
+pss.big[,"patch",] <- 1:nrow(pss.big)
+pss.big[,"area" ,] <- area.dist
+
+for(e in 1:n.ens){
+  pss.big[,"fsc"  ,e] <- fsc_ss[e] # fsc
+  pss.big[,"stsc" ,e] <- ssl_ss[e]
+  pss.big[,"stsl" ,e] <- ssl_ss[e]
+  pss.big[,"ssc"  ,e] <- ssc_ss[e]
+  pss.big[,"msn"  ,e] <- msn_ss[e]
+  pss.big[,"fsn"  ,e] <- fsn_ss[e]
+}
 # *************************************
 #---------------------------------------
 
@@ -543,12 +565,17 @@ pss.big[,14] <- rep(fsn_ss[p.use],nrow(pss.big)) # fsn
 # 8. Write everything to file!!
 # NOTE: ED is silly and requires the site lat/lon to be part of the init file name
 #---------------------------------------
-sas.name <- paste0(site.ID, "_lat", site.lat, "lon", site.lon) 
-
-write.table(css.big,file=paste(out,sas.name,".css",sep=""),row.names=FALSE,append=FALSE,
-            col.names=TRUE,quote=FALSE)
-
-write.table(pss.big,file=paste(out,sas.name,".pss",sep=""),row.names=FALSE,append=FALSE,
-            col.names=TRUE,quote=FALSE)
+options(scipen=999) # Turn of scientific notation!
+for(e in 1:n.ens){
+  tag <- str_pad(e, width=3, pad= "0")
+  sas.name <- paste0(site.ID, ".ens.", tag, ".lat", site.lat, "lon", site.lon) 
+  
+  write.table(css.big[,,e],file=file.path(path.out,paste0(sas.name,".css")),row.names=FALSE,append=FALSE,
+              col.names=TRUE,quote=FALSE)
+  
+  write.table(pss.big[,,e],file=file.path(path.out,paste0(sas.name,".pss")),row.names=FALSE,append=FALSE,
+              col.names=TRUE,quote=FALSE)
+}
+options(scipen=0) # Turn scientific notation back on
 #---------------------------------------
 # -------------------------------------

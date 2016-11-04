@@ -34,9 +34,9 @@
 #       5. age   = time since spin start 
 #       -- plus dummy values
 # 6. Patch Extraction Loop (from monthly histo files)
-#    - fsc_in = fast (labile?) soil C inputs ("FSC_IN")
-#    - ssc_in = structural (recalcitrant?) soil C inputs ("SSC_IN")
-#    - ssl_in = structural (recalcitrant?) soil L inputs ("SSL_IN")
+#    - fsc_in = fast (labile?) soil Carbon inputs ("FSC_IN")
+#    - ssc_in = structural (recalcitrant?) soil Carbon inputs ("SSC_IN")
+#    - ssl_in = structural (recalcitrant?) soil Lignin inputs ("SSL_IN")
 #    - fsn_in = fast (labile?) soil Nitrogen inputs ("FSN_IN")
 #    - pln_up = plant nitrogen uptake inputs ("TOTAL_PLANT_NITROGEN_UPTAKE")
 # 7. Calculate steady-state soil pools!

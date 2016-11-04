@@ -217,7 +217,7 @@ pss.big[,"area"] <- area.dist
 # Note: In ED there's a pain in the butt way of doing this with the energy, but we're going to approximate
 # slz  <- c(-5.50, -4.50, -2.17, -1.50, -1.10, -0.80, -0.60, -0.45, -0.30, -0.20, -0.12, -0.06)
 # dslz <- c(1.00,   2.33,  0.67,  0.40,  0.30,  0.20,  0.15,  0.15,  0.10,  0.08,  0.06,  0.06)
-nc.temp <- nc_open(file.path(dat.dir, ann.files[1]))
+nc.temp <- nc_open(file.path(path.analy, ann.files[1]))
 slz <- ncvar_get(nc.temp, "SLZ")
 dslz <- vector(length=length(slz))
 dslz[length(dslz)] <- 0-slz[length(dslz)]
@@ -252,11 +252,10 @@ for(y in yrs){
     day.now   <- sprintf("%2.2i",0)
     hour.now  <- sprintf("%6.6i",0)
     
-    file.now    <- paste(sites[s],"-E-",year.now,"-",month.now,"-",day.now,"-"
-                         ,hour.now,"-",sufx,sep="")
+    file.now    <- dir(path.analy, paste0("-E-",year.now,"-",month.now,"-",day.now,"-",hour.now,"-",sufx))
     
     # cat(" - Reading file :",file.now,"...","\n")
-    now <- nc_open(paste(dat.dir,file.now,sep=""))
+    now <- nc_open(file.path(path.analy,file.now))
     
     air.temp.tmp  [m] <- ncvar_get(now, "MMEAN_ATM_TEMP_PY")
     soil.temp.tmp [m] <- sum(ncvar_get(now, "MMEAN_SOIL_TEMP_PY")[nsoil]*dslz[nsoil]/sum(dslz[nsoil]))
@@ -288,7 +287,7 @@ rel_soil_moist <- 0.5
 #---------------------------------------  
 for (y in yrs){
   cat(" - Reading file :",ann.files[y-yeara+1],"...","\n")
-  now <- nc_open(paste(dat.dir,ann.files[y-yeara+1],sep=""))
+  now <- nc_open(file.path(path.analy,ann.files[y-yeara+1]))
   ind <- which(yrs == y)
   
   #Grab variable to see how many cohorts there are
@@ -361,8 +360,7 @@ fsc_in_y <- ssc_in_y <- ssl_in_y <- fsn_in_y <- pln_up_y <- vector()
 fsc_in_m <- ssc_in_m <- ssl_in_m <- fsn_in_m <- pln_up_m <-  vector()
 
 # switch to the histo directory
-dat.dir    <- paste(in.base,sites[s],"/histo/",sep="")
-mon.files  <- dir(dat.dir, "-S-") # monthly files only  
+mon.files  <- dir(path.histo, "-S-") # monthly files only  
 
 for (y in yrs){      
   for(m in month.begin:month.end){
@@ -372,12 +370,11 @@ for (y in yrs){
     day.now   <- sprintf("%2.2i",1)
     hour.now  <- sprintf("%6.6i",0)
     
-    dat.dir     <- paste(in.base,sites[s],"/histo/",sep="")
-    file.now    <- paste(sites[s],"-S-",year.now,"-",month.now,"-",day.now,"-"
-                         ,hour.now,"-",sufx,sep="")
+    file.now    <- dir(path.histo, paste0("-S-",year.now,"-",month.now,"-",day.now,"-"
+                         ,hour.now,"-",sufx))
     
     cat(" - Reading file :",file.now,"...","\n")
-    now <- nc_open(paste(dat.dir,file.now,sep=""))
+    now <- nc_open(file.path(path.histo,file.now))
     
     # Note: we have to convert the daily value for 1 month by days per month to get a monthly estimate
     fsc_in_m[m-month.begin+1] <- ncvar_get(now,"FSC_IN")*dpm[m] #kg/(m2*day) --> kg/(m2*month)
